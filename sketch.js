@@ -1,413 +1,329 @@
-// 定義畫布上氣球的最大數量
+// 定義氣球總數量常數
 const BALLOON_COUNT = 50;
 
-// 定義儲存所有氣球物件的陣列
+// 定義指定色盤的 Hex 色碼陣列
+const PALETTE = [
+  '#f94144', '#f3722c', '#f8961e', '#f9844a', '#f9c74f',
+  '#90be6d', '#43aa8b', '#4d908e', '#577590', '#277da1'
+];
+
+// 宣告全域陣列用於存儲所有氣球實例
 let balloons = [];
 
-// 定義儲存爆破粒子特效的陣列
-let particles = [];
-
-// 定義儲存氣球爆破音效的變數
+// 宣告音效資源與控制變數
+let bgMusic;
 let popSound;
+let isSoundEnabled = true;
+let soundToggleBtn;
 
-// 定義音效開關狀態變數（預設為開啟 true）
-let soundEnabled = true;
-
-// 定義右下角音效切換按鈕的 DOM 元素變數
-let soundButton;
-
-// 預先載入外部資源的函式
+// p5.js 資源預先載入函式
 function preload() {
-  // 載入指定的氣球爆破音效檔案
+  // 載入背景音樂檔案
+  bgMusic = loadSound('assets/mixkit-game-level-music-689.mp3');
+  // 載入氣球爆破音效檔案
   popSound = loadSound('assets/balloon-pop-36589.mp3');
 }
 
-// 根據指定色盤定義的氣球顏色陣列 (Hex 格式)
-const PALETTE = [
-  '#f94144', // 紅色
-  '#f3722c', // 橙紅
-  '#f8961e', // 橙色
-  '#f9844a', // 珊瑚粉橘
-  '#f9c74f', // 暖黃
-  '#90be6d', // 草綠
-  '#43aa8b', // 碧綠
-  '#4d908e', // 灰青
-  '#577590', // 墨藍
-  '#277da1'  // 湖藍
-];
-
-// 初始化設定函式
+// p5.js 初始化設定函式
 function setup() {
-  // 建立全螢幕畫布，填滿瀏覽器視窗寬度與高度
+  // 建立填滿視窗大小的全螢幕畫布
   createCanvas(windowWidth, windowHeight);
-  // 設定角度計算模式為度數 (Degrees)，方便旋轉與三角運算
-  angleMode(DEGREES);
-  // 建立右下角的音效切換按鈕
-  soundButton = createButton('🔊 音效：開啟');
-  // 調整按鈕在畫面中的位置
-  positionSoundButton();
-  // 為按鈕綁定點擊事件回呼函式
-  soundButton.mousePressed(toggleSound);
-  // 為按鈕套用基礎的美化樣式
-  styleSoundButton();
 
-  // 根據設定的數量初始化所有氣球
+  // 設定色彩模式為 RGB，範圍 0 至 255
+  colorMode(RGB, 255);
+
+  // 設定角度模式為弧度制
+  angleMode(RADIANS);
+
+  // 初始化並設定背景音樂循環播放與較高音量
+  bgMusic.setLoop(true);
+  bgMusic.setVolume(0.5);
+
+  // 設定爆破音效音量為較小聲，避免蓋過背景音樂
+  popSound.setVolume(0.15);
+
+  // 建立音效開關 HTML 按鈕
+  soundToggleBtn = createButton('🔊 爆破音效：開啟');
+  // 設定按鈕樣式與位置
+  updateSoundButtonPosition();
+  soundToggleBtn.style('padding', '8px 16px');
+  soundToggleBtn.style('font-size', '14px');
+  soundToggleBtn.style('background', 'rgba(255, 255, 255, 0.85)');
+  soundToggleBtn.style('border', '1px solid #ccc');
+  soundToggleBtn.style('border-radius', '20px');
+  soundToggleBtn.style('cursor', 'pointer');
+  soundToggleBtn.style('font-family', 'sans-serif');
+  soundToggleBtn.style('box-shadow', '0 2px 6px rgba(0,0,0,0.15)');
+  // 綁定按鈕點擊觸發事件
+  soundToggleBtn.mousePressed(toggleSound);
+
+  // 產生指定數量的氣球實例並推入陣列中
   for (let i = 0; i < BALLOON_COUNT; i++) {
-    // 建立新的氣球物件並隨機分散初始 y 軸高度以避免一次全部湧入
     balloons.push(new Balloon(true));
   }
 }
 
-// 畫格更新繪製函式
+// p5.js 每幀繪製循環函式
 function draw() {
-  // 清除背景並設定帶有漸層感的暗夜藍紫色天空背景
-  background(20, 24, 38);
+  // 清除背景並填上柔和的淺灰藍色，突顯氣球色彩
+  background(242, 245, 248);
 
-  // 遍歷所有氣球以進行物理運算與繪製
+  // 遍歷所有氣球以更新狀態並繪製
   for (let i = 0; i < balloons.length; i++) {
-    // 更新氣球的物理位置與浮動狀態
+    // 更新氣球的物理位置與生命週期
     balloons[i].update();
     // 將氣球繪製於畫布上
     balloons[i].display();
-
-    // 檢查氣球是否觸發爆破或飛出螢幕頂端
-    if (balloons[i].isPopped) {
-      // 觸發該氣球的破裂特效並產生殘片粒子
-      createPopExplosion(balloons[i].x, balloons[i].y, balloons[i].radius, balloons[i].col);
-      // 檢查是否已開啟音效，若開啟則播放音效
-      if (soundEnabled && popSound && popSound.isLoaded()) {
-        // 播放破裂音效
-        popSound.play();
-      }
-      // 在畫布底部重新生成一個全新的氣球替補該位置
-      balloons[i] = new Balloon(false);
-    }
-  }
-
-  // 倒序遍歷爆破碎片粒子，方便在粒子生命結束時安全刪除
-  for (let i = particles.length - 1; i >= 0; i--) {
-    // 更新粒子速度與位置
-    particles[i].update();
-    // 繪製粒子於畫布上
-    particles[i].display();
-    // 若粒子生命週期結束則從陣列中移除
-    if (particles[i].isDead()) {
-      // 移除當前索引的粒子
-      particles.splice(i, 1);
-    }
   }
 }
 
-// 當視窗大小發生變更時觸發的自適應重設函式
+// 視窗尺寸改變時的事件監聽函式
 function windowResized() {
-  // 重新調整畫布尺寸為當前視窗的寬與高
+  // 動態調整畫布尺寸以符合全新視窗大小
   resizeCanvas(windowWidth, windowHeight);
-  // 重新計算並定位右下角按鈕位置
-  positionSoundButton();
-  // 讓所有氣球依照新的視窗尺寸重新調整大小比例
+  // 重新計算所有氣球的尺寸以符合畫布比例（10% - 30%）
   for (let i = 0; i < balloons.length; i++) {
-    // 重新呼叫氣球尺寸自適應函式
     balloons[i].recalculateSize();
   }
+  // 重新調整右下角按鈕的位置
+  updateSoundButtonPosition();
 }
 
-// 重新定位音效控制按鈕至畫布右下角的函式
-function positionSoundButton() {
-  // 設定按鈕靠右下對齊，邊距為 20 像素
-  soundButton.position(width - 150, height - 60);
+// 輔助函式：更新右下角音效切換按鈕的位置
+function updateSoundButtonPosition() {
+  // 將按鈕固定在畫布右下角，留有 20px 的邊距
+  soundToggleBtn.position(windowWidth - 170, windowHeight - 50);
 }
 
-// 切換音效開啟/關閉狀態的函式
+// 輔助函式：切換音效狀態開關
 function toggleSound() {
-  // 如果使用者尚未與瀏覽器互動導致音訊未啟動，則主動啟動音訊環境
-  userStartAudio();
-  // 反轉目前音效布林值狀態
-  soundEnabled = !soundEnabled;
-  // 根據最新狀態更新按鈕文字內容與圖示
-  if (soundEnabled) {
-    // 音效開啟時的標籤文字
-    soundButton.html('🔊 音效：開啟');
-    // 開啟時套用明亮的翡翠綠色按鈕背景
-    soundButton.style('background-color', 'rgba(67, 170, 139, 0.85)');
+  // 切換布林開關狀態
+  isSoundEnabled = !isSoundEnabled;
+  // 依據當前狀態更新按鈕文字顯示
+  if (isSoundEnabled) {
+    soundToggleBtn.html('🔊 爆破音效：開啟');
   } else {
-    // 音效關閉時的標籤文字
-    soundButton.html('🔇 音效：關閉');
-    // 關閉時套用半透明暗灰背景
-    soundButton.style('background-color', 'rgba(87, 117, 144, 0.85)');
+    soundToggleBtn.html('🔇 爆破音效：關閉');
   }
 }
 
-// 設定按鈕 CSS 樣式的函式
-function styleSoundButton() {
-  // 設定按鈕背景色彩
-  soundButton.style('background-color', 'rgba(67, 170, 139, 0.85)');
-  // 設定字體顏色為純白色
-  soundButton.style('color', '#ffffff');
-  // 移除預設外框
-  soundButton.style('border', 'none');
-  // 設定圓角半徑
-  soundButton.style('border-radius', '20px');
-  // 設定內部留白空間
-  soundButton.style('padding', '10px 18px');
-  // 設定字體大小
-  soundButton.style('font-size', '14px');
-  // 設定字體粗細
-  soundButton.style('font-weight', 'bold');
-  // 設定滑鼠游標為手指形狀
-  soundButton.style('cursor', 'pointer');
-  // 設定陰影增加立體視覺質感
-  soundButton.style('box-shadow', '0 4px 10px rgba(0, 0, 0, 0.3)');
-  // 設定圖層順序在最上方
-  soundButton.style('z-index', '100');
-}
-
-// 產生爆破碎片粒子效果的函式
-function createPopExplosion(x, y, radius, colorHex) {
-  // 隨機產生 20 到 30 個殘片粒子
-  const count = int(random(20, 30));
-  // 迴圈新增粒子
-  for (let i = 0; i < count; i++) {
-    // 將新產生的粒子推入全域粒子陣列中
-    particles.push(new Particle(x, y, radius, colorHex));
+// 使用者互動時自動啟動背景音樂（相容瀏覽器自動播放政策）
+function mousePressed() {
+  // 若背景音樂尚未開始播放，則啟動播放
+  if (bgMusic.isLoaded() && !bgMusic.isPlaying()) {
+    bgMusic.play();
   }
 }
 
-// 繪製五角星星幾何形狀的通用工具函式
-function drawStar(x, y, radius1, radius2, npoints) {
-  // 計算星形內外頂點間的角度差
-  let angle = 360 / npoints;
-  // 內部凹點的偏移半角
+// 繪製五角星星的輔助函式
+function drawStar(x, y, radius1, radius2) {
+  // 定義五角星頂點角度增量
+  let angle = TWO_PI / 5;
   let halfAngle = angle / 2.0;
-  // 開始定義自由形狀
+
+  // 開始形狀繪製路徑
   beginShape();
-  // 依照頂點數進行角度迭代繪製
-  for (let a = 0; a < 360; a += angle) {
-    // 計算外部星尖頂點的 X 座標
-    let sx = x + cos(a) * radius2;
-    // 計算外部星尖頂點的 Y 座標
-    let sy = y + sin(a) * radius2;
-    // 標記外頂點
+  // 迴圈計算並連結構建五角星頂點
+  for (let a = 0; a < TWO_PI; a += angle) {
+    // 外圈頂點座標計算
+    let sx = x + cos(a - HALF_PI) * radius2;
+    let sy = y + sin(a - HALF_PI) * radius2;
     vertex(sx, sy);
-    // 計算內部凹槽頂點的 X 座標
-    sx = x + cos(a + halfAngle) * radius1;
-    // 計算內部凹槽頂點的 Y 座標
-    sy = y + sin(a + halfAngle) * radius1;
-    // 標記內頂點
+    // 內圈頂點座標計算
+    sx = x + cos(a + halfAngle - HALF_PI) * radius1;
+    sy = y + sin(a + halfAngle - HALF_PI) * radius1;
     vertex(sx, sy);
   }
-  // 封閉並完成星星繪製
+  // 閉合並繪製完成形狀
   endShape(CLOSE);
 }
 
-// 氣球類別定義
+// 氣球物件導向類別定義
 class Balloon {
-  // 建構元函式，接收一個是否為初始隨機分布的布林參數
-  constructor(isInitial) {
-    // 從指定色彩盤中隨機選取氣球顏色
-    this.col = random(PALETTE);
-    // 隨機指派氣球的水平位置 (X 軸)
-    this.x = random(width * 0.05, width * 0.95);
-    // 根據是否初次載入，隨機分配 Y 軸高度或直接置於畫布底部下方
-    this.y = isInitial ? random(-height * 0.2, height * 1.2) : height + random(50, 200);
-    // 隨機產生上升的速度（速度介於 1.2 到 2.8 像素之間）
+  // 建構子函式，isInitial 用於標記是否為開場初始化
+  constructor(isInitial = false) {
+    // 隨機選取色盤中的 Hex 色碼
+    this.hexColor = random(PALETTE);
+    // 隨機設定上升速度（垂直向上因此為負值）
     this.speedY = random(1.2, 2.8);
-    // 設定水平漂浮擾動的隨機雜訊偏移量
-    this.noiseOffset = random(1000);
-    // 設定透明度動態呼吸擾動的雜訊偏移量
-    this.alphaNoiseOffset = random(1000);
-    // 標記氣球是否已破裂
-    this.isPopped = false;
-    // 隨機指派一個會引發自發爆破的高度臨界值 (畫布上中段之間)
-    this.popThresholdY = random(height * 0.1, height * 0.7);
-    // 根據視窗尺寸動態計算氣球半徑大小 (寬或高中較小值的 10% 到 30%)
+    // 設定水平擺動的雜訊偏移初始相位
+    this.noiseOffsetX = random(1000);
+    // 設定透明度動態呼吸變化的正弦初始相位
+    this.alphaPhase = random(TWO_PI);
+    // 動態計算氣球的基準直徑大小（畫面較小邊長的 10% 至 30%）
+    this.sizeRatio = random(0.10, 0.30);
     this.recalculateSize();
+
+    // 氣球水平初始位置隨機分佈在視窗內
+    this.x = random(this.width / 2, width - this.width / 2);
+
+    // 依據是否為開場初始化，決定垂直初始位置
+    if (isInitial) {
+      // 開場均勻散佈在螢幕中，營造動態空間感
+      this.y = random(height * 0.1, height + 200);
+    } else {
+      // 爆破後由畫面底部重新生成
+      this.y = height + this.height + random(50, 150);
+    }
+
+    // 設定可能引發爆破的垂直目標高度閾值（例如上升到畫面上半部至中段區間）
+    this.popThresholdY = random(-50, height * 0.7);
+
+    // 爆破粒子特效系統陣列
+    this.isPopping = false;
+    this.particles = [];
   }
 
-  // 動態根據目前視窗短邊尺寸計算氣球半徑
+  // 依照當前視窗動態重新計算氣球幾何尺寸
   recalculateSize() {
-    // 取得當前畫布長寬中較小的一側作為計算基準
-    let minDimension = min(width, height);
-    // 直徑設為基準邊的 10% 到 30% 之間
-    let diameter = minDimension * random(0.10, 0.30);
-    // 計算氣球半徑
-    this.radius = diameter / 2;
+    // 取得視窗寬高之較小維度作為計算基礎
+    let baseDimension = min(width, height);
+    // 寬度設定為基準尺寸乘以隨機比例
+    this.width = baseDimension * this.sizeRatio;
+    // 高度設定為長寬比約 1.25 的立體橢圓比例
+    this.height = this.width * 1.25;
   }
 
-  // 更新氣球的物理位置與隨機爆破機率邏輯
-  update() {
-    // 氣球以固定速度向上飄升
-    this.y -= this.speedY;
-    // 藉由 Perlin Noise 產生自然的左右擺動風力效果 (映射至 -1 到 1 像素)
-    let sway = map(noise(this.noiseOffset), 0, 1, -1.2, 1.2);
-    // 更新 X 軸位置
-    this.x += sway;
-    // 推進雜訊偏移量時間軸
-    this.noiseOffset += 0.01;
+  // 觸發爆破行為函式
+  pop() {
+    // 標記為爆破中狀態
+    this.isPopping = true;
 
-    // 當氣球飄升至隨機指定的爆破高度範圍時
+    // 若音效開啟且檔案載入完成，則觸發微小音量的爆破音效
+    if (isSoundEnabled && popSound.isLoaded()) {
+      popSound.play();
+    }
+
+    // 產生碎裂爆破粒子
+    let particleCount = 18;
+    for (let i = 0; i < particleCount; i++) {
+      // 計算分散的速度向量
+      let angle = random(TWO_PI);
+      let speed = random(2, 7);
+      this.particles.push({
+        x: this.x,
+        y: this.y,
+        vx: cos(angle) * speed,
+        vy: sin(angle) * speed,
+        size: random(this.width * 0.05, this.width * 0.12),
+        alpha: 255
+      });
+    }
+  }
+
+  // 重置氣球屬性並置於底部
+  reset() {
+    // 重新選取顏色
+    this.hexColor = random(PALETTE);
+    // 重新設定尺寸比例
+    this.sizeRatio = random(0.10, 0.30);
+    this.recalculateSize();
+    // 重新設定位置
+    this.x = random(this.width / 2, width - this.width / 2);
+    this.y = height + this.height + random(20, 100);
+    // 重新設定上升速率與爆破高度閾值
+    this.speedY = random(1.2, 2.8);
+    this.popThresholdY = random(-50, height * 0.7);
+    // 狀態復原
+    this.isPopping = false;
+    this.particles = [];
+  }
+
+  // 更新氣球運動與狀態數據
+  update() {
+    // 若處於爆破粒子動畫狀態
+    if (this.isPopping) {
+      let activeCount = 0;
+      // 更新所有碎裂粒子的物理狀態
+      for (let p of this.particles) {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.15; // 模擬重力微幅下墜
+        p.alpha -= 8; // 漸漸淡出
+        if (p.alpha > 0) activeCount++;
+      }
+      // 當所有粒子完全淡出消失時，重置並在下方生成新氣球
+      if (activeCount === 0) {
+        this.reset();
+      }
+      return;
+    }
+
+    // 氣球向上移動
+    this.y -= this.speedY;
+
+    // 利用 Perlin Noise 計算水平柔和左右微幅漂移
+    let drift = map(noise(this.noiseOffsetX), 0, 1, -1.2, 1.2);
+    this.x += drift;
+    this.noiseOffsetX += 0.008;
+
+    // 動態調整透明度相位
+    this.alphaPhase += 0.04;
+
+    // 隨機爆破機率判定（需上升到閾值高度以上，每幀微小機率觸發，或飛出頂部邊界）
     if (this.y < this.popThresholdY) {
-      // 每一個畫格有 0.8% 的隨機機率自然觸發破裂
-      if (random() < 0.008) {
-        // 設定爆破標記為 true
-        this.isPopped = true;
+      // 隨機機率觸發爆破，或達到畫面頂部直接破裂
+      if (random(1) < 0.007 || this.y < -this.height) {
+        this.pop();
       }
     }
+  }
 
-    // 若氣球一路平安飄升超出畫布頂端安全區，亦標記為破裂以重新循環
-    if (this.y < -this.radius * 2) {
-      // 標記重置為 true
-      this.isPopped = true;
+  // 繪製氣球元件至畫布
+  display() {
+    // 若在爆破狀態，繪製彩色擴散粒子
+    if (this.isPopping) {
+      noStroke();
+      let c = color(this.hexColor);
+      for (let p of this.particles) {
+        fill(red(c), green(c), blue(c), p.alpha);
+        circle(p.x, p.y, p.size);
+      }
+      return;
     }
-  }
 
-  // 繪製氣球本體、氣球線與內部連動星星的函式
-  display() {
-    // 儲存當前變形矩陣與繪圖設定
-    push();
-    // 移動坐標原點至氣球中心
-    translate(this.x, this.y);
+    // 計算正弦呼吸動態透明度（透明度區間落在約 140 至 235 之間）
+    let dynamicAlpha = map(sin(this.alphaPhase), -1, 1, 140, 235);
 
-    // 藉由 Perlin Noise 動態調節氣球透明度 (透明度介於 160 到 235 之間，形成柔和呼吸感)
-    let dynamicAlpha = map(noise(this.alphaNoiseOffset), 0, 1, 160, 235);
-    // 推進透明度雜訊偏移量
-    this.alphaNoiseOffset += 0.015;
-
-    // 氣球寬度為半徑的兩倍
-    let bWidth = this.radius * 2;
-    // 氣球高度稍長於寬度（橢圓縱向延伸 1.2 倍比例）
-    let bHeight = this.radius * 2.4;
-
-    // --- 1. 繪製氣球下方的懸掛線條 ---
-    // 繪製線條前儲存樣式狀態
-    push();
-    // 移除填色
-    noFill();
-    // 設定半透明柔和淺灰色線條
-    stroke(255, 255, 255, dynamicAlpha * 0.6);
-    // 設定細緻的線條寬度
+    // 1. 繪製氣球下方的垂懸細線
+    stroke(120, 120, 120, dynamicAlpha * 0.8);
     strokeWeight(1.5);
-    // 起點從氣球底部的綁結處出發
-    let startY = bHeight * 0.5 + 8;
-    // 定義線條長度，與氣球尺寸成正比
-    let stringLength = bHeight * 1.1;
-    // 運用貝茲曲線模擬隨風自然垂落擺動的棉線
+    noFill();
+    let stringLength = this.height * 0.85;
+    // 繪製貝茲曲線產生風吹擺動感
+    let stringControlX = this.x + sin(this.alphaPhase) * (this.width * 0.15);
     bezier(
-      0, startY, // 線條起點
-      sin(frameCount * 2) * 15, startY + stringLength * 0.35, // 第一個控制點
-      -cos(frameCount * 2) * 15, startY + stringLength * 0.7, // 第二個控制點
-      sin(frameCount * 2) * 8, startY + stringLength // 線條終點
+      this.x, this.y + this.height * 0.5,
+      this.x, this.y + this.height * 0.5 + stringLength * 0.4,
+      stringControlX, this.y + this.height * 0.5 + stringLength * 0.7,
+      this.x, this.y + this.height * 0.5 + stringLength
     );
-    // 恢復樣式狀態
-    pop();
 
-    // --- 2. 繪製氣球底部的封口結 ---
-    // 設定封口結外框為無
+    // 2. 繪製氣球本體（嚴格無外框）
     noStroke();
-    // 轉化 Hex 色彩並帶入當前動態透明度
-    let baseColor = color(this.col);
-    // 設定透明度
-    baseColor.setAlpha(dynamicAlpha);
-    // 設定填色為氣球本體顏色
-    fill(baseColor);
-    // 繪製微型倒三角形作為氣球打結處
-    triangle(-6, bHeight * 0.5, 6, bHeight * 0.5, 0, bHeight * 0.5 + 9);
+    let balloonColor = color(this.hexColor);
+    fill(red(balloonColor), green(balloonColor), blue(balloonColor), dynamicAlpha);
 
-    // --- 3. 繪製氣球本體 (無外框、動態半透明) ---
-    // 明確設定本體絕無外框 (滿足規格：氣球本體無外框)
-    noStroke();
-    // 設定氣球本體填色
-    fill(baseColor);
-    // 繪製卵型氣球形狀
-    ellipse(0, 0, bWidth, bHeight);
+    // 繪製底部小三角打結造型
+    let knotSize = this.width * 0.12;
+    let knotY = this.y + this.height * 0.5;
+    triangle(
+      this.x - knotSize * 0.5, knotY + knotSize * 0.8,
+      this.x + knotSize * 0.5, knotY + knotSize * 0.8,
+      this.x, knotY
+    );
 
-    // --- 4. 氣球內部的右上角星星圖案 (黃色，大小與氣球連動) ---
-    // 繪製星星前儲存繪圖樣式
-    push();
-    // 計算星星位於氣球內部的右上角偏移座標 (維持於氣球輪廓內)
-    let starX = this.radius * 0.38;
-    // 計算星星 Y 軸位置 (向上偏移)
-    let starY = -bHeight * 0.22;
-    // 星星的外半徑與氣球半徑成等比例 (約為氣球半徑的 24%)
-    let starOuterRadius = this.radius * 0.24;
-    // 星星的內凹半徑為外半徑的一半
-    let starInnerRadius = starOuterRadius * 0.48;
-    // 星星無外框
-    noStroke();
-    // 設定星星為溫潤的亮黃色，並伴隨氣球透明度連動
-    fill(255, 225, 53, dynamicAlpha * 0.95);
-    // 移動坐標至右上角星星所在處
-    translate(starX, starY);
-    // 稍微旋轉星星角度，增添動態輕盈感
-    rotate(frameCount * 0.5 + this.radius);
-    // 繪製五角星
-    drawStar(0, 0, starInnerRadius, starOuterRadius, 5);
-    // 恢復星形繪圖狀態
-    pop();
+    // 繪製氣球主體橢圓
+    ellipse(this.x, this.y, this.width, this.height);
 
-    // 恢復原本的坐標系與繪圖設定
-    pop();
-  }
-}
+    // 3. 繪製氣球內部右上方的黃色星星（尺寸與氣球大小連動並跟隨移動）
+    let starOffsetX = this.width * 0.22;
+    let starOffsetY = -this.height * 0.20;
+    let starOuterRadius = this.width * 0.12;
+    let starInnerRadius = starOuterRadius * 0.45;
 
-// 氣球破裂飛散粒子類別定義
-class Particle {
-  // 建構元函式，接收破裂源頭座標、尺寸與主色彩
-  constructor(x, y, radius, colorHex) {
-    // 設定粒子起始 X 座標
-    this.x = x;
-    // 設定粒子起始 Y 座標
-    this.y = y;
-    // 隨機朝 360 度四面八方發射
-    let angle = random(360);
-    // 根據氣球大小決定爆破初速度強度
-    let speed = random(2, map(radius, 20, 150, 4, 10));
-    // 依三角函數分解為 X 方向速度
-    this.vx = cos(angle) * speed;
-    // 依三角函數分解為 Y 方向速度
-    this.vy = sin(angle) * speed;
-    // 粒子起始透明度 (全滿 255)
-    this.lifespan = 255;
-    // 透明度遞減衰退速率
-    this.decay = random(6, 12);
-    // 粒子尺寸隨氣球本體尺寸成正比
-    this.size = random(2, radius * 0.12);
-    // 繼承氣球的原色
-    this.col = color(colorHex);
-  }
-
-  // 更新粒子的位移、重力與衰退壽命
-  update() {
-    // 疊加水平位移
-    this.x += this.vx;
-    // 疊加垂直位移
-    this.y += this.vy;
-    // 施加微量重力加速度往下落
-    this.vy += 0.12;
-    // 空氣阻力使水平擴散趨緩
-    this.vx *= 0.96;
-    // 扣除壽命透明度
-    this.lifespan -= this.decay;
-  }
-
-  // 繪製碎片粒子
-  display() {
-    // 儲存樣式
-    push();
-    // 碎片無外框
-    noStroke();
-    // 根據剩餘壽命更新粒子透明度
-    this.col.setAlpha(this.lifespan);
-    // 設定填色
-    fill(this.col);
-    // 繪製碎圓片
-    circle(this.x, this.y, this.size);
-    // 恢復樣式
-    pop();
-  }
-
-  // 檢查粒子壽命是否已完全耗盡
-  isDead() {
-    // 若透明度小於等於 0 則回傳 true
-    return this.lifespan <= 0;
+    // 星星填色為明亮黃色，透明度與氣球呼吸動態同步
+    fill(255, 220, 40, dynamicAlpha * 0.95);
+    drawStar(this.x + starOffsetX, this.y + starOffsetY, starInnerRadius, starOuterRadius);
   }
 }
