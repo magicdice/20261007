@@ -1,177 +1,214 @@
-// 定義色盤陣列，色彩取自指定 Coolors 參考色盤
-const PALETTE = [
+// 定義畫面上欲產生的氣球總數量
+const BALLOON_COUNT = 50;
+
+// 定義氣球色彩參考色盤（十六進位色碼字串陣列）
+const COLOR_PALETTE = [
   '#f94144', '#f3722c', '#f8961e', '#f9844a', '#f9c74f',
   '#90be6d', '#43aa8b', '#4d908e', '#577590', '#277da1'
 ];
 
-// 設定畫面上預計產生的氣球總數量
-const BALLOON_COUNT = 50;
-
 // 宣告儲存所有氣球物件實例的陣列
 let balloons = [];
 
-// 定義 Balloon（氣球）類別，封裝單一氣球的所有屬性與行為
+// 定義氣球類別（Balloon）以封裝個別狀態與渲染行為
 class Balloon {
-  // 建構函式：初始化氣球的相對尺寸、位置、顏色與物理動態參數
+  // 建構函式，初始化氣球屬性
   constructor() {
-    // 隨機決定氣球相對於畫面短邊的比例大小（介於 10% 到 30% 之間）
+    // 呼叫重設位置與初始屬性方法（初次生成分佈於全螢幕）
+    this.reset(true);
+  }
+
+  // 重設氣球狀態方法，initial 為 true 代表初次產生，false 代表飄出螢幕後由底部重生
+  reset(initial = false) {
+    // 隨機選取畫面基準維度（取寬與高的較小值），尺寸介於畫面 10% 至 30% 之間
     this.sizeRatio = random(0.10, 0.30);
-    // 依據目前視窗尺寸計算氣球的實際像素寬度
-    this.w = min(windowWidth, windowHeight) * this.sizeRatio;
-    // 氣球為縱向橢圓，高度設定為寬度的 1.25 倍
-    this.h = this.w * 1.25;
-    // 隨機生成氣球在視窗水平寬度內的初始 X 座標
-    this.x = random(0, windowWidth);
-    // 隨機生成氣球在畫面下方向下延伸範圍內的初始 Y 座標，呈現錯落上升感
-    this.y = random(windowHeight, windowHeight * 2);
-    // 隨機設定垂直上升速率（每影格移動像素）
-    this.speedY = random(0.8, 2.2);
-    // 隨機決定水平正弦飄動的角速度增量（模擬空氣氣流擾動）
+    // 根據當前視窗動態計算氣球的實際直徑
+    this.diameter = min(width, height) * this.sizeRatio;
+    // 氣球橢圓的高度為寬度的 1.25 倍
+    this.h = this.diameter * 1.25;
+    // 氣球橢圓的寬度
+    this.w = this.diameter;
+    // 隨機決定氣球水平 X 軸位置
+    this.x = random(width);
+    // 若為初次生成則隨機散佈於整個畫布，否則從畫面底部外側生成
+    this.y = initial ? random(height) : height + this.h;
+    // 向上漂浮的速度（大小較大的氣球飄得稍微快一點）
+    this.speedY = map(this.sizeRatio, 0.10, 0.30, 0.8, 2.2);
+    // 左右擺動的水平位移振幅
+    this.swingAmplitude = random(15, 35);
+    // 隨機賦予擺動的起始角度相位
+    this.swingAngle = random(TWO_PI);
+    // 擺動角度隨時間推進的角速度
     this.swingSpeed = random(0.015, 0.035);
-    // 隨機決定水平飄動的偏移振幅寬度（像素）
-    this.swingAmplitude = random(20, 60);
-    // 隨機設定水平擺動的初始相位角度
-    this.angle = random(TWO_PI);
-    // 隨機設定透明度動態呼吸變化的相位角度
-    this.alphaAngle = random(TWO_PI);
-    // 隨機挑選色盤中的一個 Hex 色碼
-    this.hexColor = random(PALETTE);
+    // 隨機選定底色色碼
+    this.baseColorHex = random(COLOR_PALETTE);
+    // 基礎透明度（範圍 150 至 230，保持輕透層次）
+    this.baseAlpha = random(150, 230);
+    // 透明度動態震盪的時間相位
+    this.alphaPhase = random(TWO_PI);
+    // 透明度變化的更新速率
+    this.alphaSpeed = random(0.02, 0.05);
+    // 氣球下方懸掛繩線的長度（與氣球本體高度成正比）
+    this.stringLength = this.h * 1.2;
   }
 
-  // 視窗尺寸改變時更新氣球的實際像素尺寸
-  resize() {
-    // 根據縮放後的新視窗短邊重新動態計算寬度
-    this.w = min(windowWidth, windowHeight) * this.sizeRatio;
-    // 根據新寬度等比例更新高度
-    this.h = this.w * 1.25;
+  // 當視窗縮放時重新計算氣球當前尺寸
+  recalculateSize() {
+    // 重新計算直徑
+    this.diameter = min(width, height) * this.sizeRatio;
+    // 重新計算高度
+    this.h = this.diameter * 1.25;
+    // 重新計算寬度
+    this.w = this.diameter;
+    // 重新計算繩線長度
+    this.stringLength = this.h * 1.2;
   }
 
-  // 更新氣球的物理位置與動畫數值狀態
+  // 更新氣球位置與動態數值
   update() {
-    // 依據上升速度累減 Y 座標（讓氣球向上升空）
+    // 氣球縱向向上飄升
     this.y -= this.speedY;
-    // 累加擺動角度以推動水平正弦擺動
-    this.angle += this.swingSpeed;
-    // 累加呼吸燈角度以平滑動態變換透明度
-    this.alphaAngle += 0.02;
+    // 推進左右擺動的角度相位
+    this.swingAngle += this.swingSpeed;
+    // 推進透明度呼吸動態的相位
+    this.alphaPhase += this.alphaSpeed;
 
-    // 當氣球完全浮出視窗頂部與繩線長度邊界時，重置到底部重新升空
-    if (this.y < -this.h - this.h * 1.5) {
-      // 將 Y 座標重置到視窗底部之外
-      this.y = windowHeight + this.h;
-      // 重新在水平寬度內隨機分配一個 X 座標
-      this.x = random(0, windowWidth);
+    // 若氣球頂端與繩線完全脫離螢幕上方，則從底部重新生成
+    if (this.y < -this.h - this.stringLength) {
+      // 呼叫 reset 且帶入 false 表示自底部重設
+      this.reset(false);
     }
   }
 
-  // 繪製氣球實體、高光點、打結處與底部飄動細線
+  // 繪製氣球與附屬物件的方法
   display() {
-    // 計算受正弦波影響後的當前即時水平中心 X 座標
-    let currentX = this.x + sin(this.angle) * this.swingAmplitude;
-    // 取得當前的即時垂直中心 Y 座標
-    let currentY = this.y;
-    // 計算氣球繩線的長度（約為氣球高度的 1.3 倍）
-    let stringLength = this.h * 1.3;
-    // 氣球底部打結點的 Y 座標
-    let bottomY = currentY + this.h / 2;
+    // 計算水平擺動所產生的即時偏移量
+    let swingOffset = sin(this.swingAngle) * this.swingAmplitude;
+    // 結合氣球基準 X 與擺動位移得出當前繪製中心 X
+    let currentX = this.x + swingOffset;
 
-    // --- 繪製氣球下方的線 ---
-    // 推入獨立繪圖狀態，避免線段樣式污染全域
+    // 動態計算目前的透明度（利用正弦波產生 ±25 的平滑浮動）
+    let dynamicAlpha = this.baseAlpha + sin(this.alphaPhase) * 25;
+
+    // 儲存當前繪圖矩陣狀態
     push();
-    // 取消線段填色
+    // 將座標原點平移至氣球中心
+    translate(currentX, this.y);
+
+    // --- 繪製下方繩線 ---
+    // 啟用線條繪製模式
+    stroke(80, 80, 80, dynamicAlpha * 0.7);
+    // 設定繩線粗細，依氣球大小動態縮放
+    strokeWeight(max(1, this.diameter * 0.015));
+    // 繩線不填色
     noFill();
-    // 設定氣球繩線顏色為半透明淡灰色
-    stroke(120, 120, 120, 140);
-    // 設定繩線線條粗細為 1.5 像素
-    strokeWeight(1.5);
-    // 開始繪製貝茲曲線形態的飄動細線
-    beginShape();
-    // 定義繩線起點（氣球底部中心）
-    vertex(currentX, bottomY);
-    // 使用貝茲曲線控制點繪製出隨風微擺的彎曲繩線
-    bezierVertex(
-      currentX + sin(this.angle + 1) * 15, bottomY + stringLength * 0.35,
-      currentX - sin(this.angle + 2) * 15, bottomY + stringLength * 0.70,
-      currentX + sin(this.angle + 3) * 10, bottomY + stringLength
+    // 繪製從氣球底部出發並自然彎曲的貝茲曲線繩線
+    bezier(
+      0, this.h * 0.5,
+      sin(this.swingAngle) * 12, this.h * 0.5 + this.stringLength * 0.35,
+      -sin(this.swingAngle) * 12, this.h * 0.5 + this.stringLength * 0.7,
+      0, this.h * 0.5 + this.stringLength
     );
-    // 結束繪製繩線路徑
-    endShape();
-    // 還原繪圖狀態
-    pop();
 
-    // --- 繪製氣球本體與打結處 ---
-    // 推入獨立繪圖狀態，繪製氣球球體
-    push();
-    // 依據作業規範嚴格設定氣球本體無外框
+    // --- 繪製氣球本體與束口結（無外框） ---
+    // 關閉線條邊框（符合氣球本體無外框要求）
     noStroke();
-    // 解析色碼為 p5.Color 物件
-    let c = color(this.hexColor);
-    // 利用正弦函數在 140 至 230 之間動態映射呼吸透明度
-    let dynamicAlpha = map(sin(this.alphaAngle), -1, 1, 140, 230);
-    // 套用動態計算後的 Alpha 透明度數值至該顏色
+    // 轉換底色色碼並套用動態調整後的透明度
+    let c = color(this.baseColorHex);
+    // 設定色彩的 alpha 透明度通道
     c.setAlpha(dynamicAlpha);
-    // 設定填充顏色為該半透明色彩
+    // 套用氣球填色
     fill(c);
 
-    // 繪製氣球底部的三角形小打結節點
+    // 繪製氣球下方的三角形束口結
     triangle(
-      currentX, bottomY,
-      currentX - this.w * 0.06, bottomY + this.h * 0.05,
-      currentX + this.w * 0.06, bottomY + this.h * 0.05
+      0, this.h * 0.48,
+      -this.w * 0.06, this.h * 0.53,
+      this.w * 0.06, this.h * 0.53
     );
 
-    // 繪製氣球本體（半透明無外框橢圓形）
-    ellipse(currentX, currentY, this.w, this.h);
+    // 繪製氣球本體橢圓形狀
+    ellipse(0, 0, this.w, this.h);
 
-    // --- 繪製氣球立體高光反射效果 ---
-    // 高光透明度隨氣球整體透明度同調變化（約 30% 到 70% 之間）
-    let highlightAlpha = map(sin(this.alphaAngle), -1, 1, 80, 180);
-    // 設定高光反射層為半透明純白
-    fill(255, 255, 255, highlightAlpha);
-    // 在氣球左上方繪製白色橢圓高光，增加通透立體光澤
-    ellipse(
-      currentX - this.w * 0.22,
-      currentY - this.h * 0.22,
-      this.w * 0.20,
-      this.h * 0.28
-    );
-    // 還原繪圖狀態
+    // --- 繪製右上方內部黃色星星圖案 ---
+    // 計算星星位於氣球右上方內部的相對中心座標（與氣球寬高連動）
+    let starX = this.w * 0.22;
+    // 計算星星 Y 軸相對位置
+    let starY = -this.h * 0.22;
+    // 星星外半徑與氣球直徑成固定比例連動（約為直徑的 14%）
+    let starRadiusOut = this.diameter * 0.14;
+    // 星星內凹半徑（設定為外徑的一半）
+    let starRadiusIn = starRadiusOut * 0.48;
+
+    // 設定星星的亮黃色填色，並隨氣球透明度動態變化
+    fill(255, 225, 53, dynamicAlpha);
+    // 呼叫五角星繪製函式
+    this.drawStar(starX, starY, starRadiusIn, starRadiusOut, 5);
+
+    // 回復先前儲存的繪圖矩陣狀態
     pop();
+  }
+
+  // 繪製多角星形幾何頂點的輔助函式
+  drawStar(x, y, radius1, radius2, npoints) {
+    // 計算每個頂點的角度跨距
+    let angle = TWO_PI / npoints;
+    // 計算內凹頂點的半角跨距
+    let halfAngle = angle / 2.0;
+    // 開始自定義形狀
+    beginShape();
+    // 依序繞行計算各角座標
+    for (let a = -HALF_PI; a < TWO_PI - HALF_PI; a += angle) {
+      // 計算外凸頂點的 X 座標
+      let sx = x + cos(a) * radius2;
+      // 計算外凸頂點的 Y 座標
+      let sy = y + sin(a) * radius2;
+      // 標註頂點
+      vertex(sx, sy);
+      // 計算內凹頂點的 X 座標
+      sx = x + cos(a + halfAngle) * radius1;
+      // 計算內凹頂點的 Y 座標
+      sy = y + sin(a + halfAngle) * radius1;
+      // 標註頂點
+      vertex(sx, sy);
+    }
+    // 結束形狀並自動閉合多邊形
+    endShape(CLOSE);
   }
 }
 
-// p5.js 初始化設定函式，於程式載入時執行一次
+// p5.js 初始化設定函式
 function setup() {
-  // 建立全螢幕自適應畫布，填滿瀏覽器可用視窗寬度與高度
+  // 建立填滿瀏覽器視窗的全螢幕畫布
   createCanvas(windowWidth, windowHeight);
-  // 依設定的數量循環生成所有氣球物件並加入陣列
+  // 迴圈實例化指定數量的氣球物件並加入陣列
   for (let i = 0; i < BALLOON_COUNT; i++) {
-    // 建立新氣球實例並推入陣列管理
+    // 產生一個新的 Balloon 實例並推入陣列
     balloons.push(new Balloon());
   }
 }
 
-// p5.js 主繪製迴圈，每影格（約 60fps）自動循環執行
+// p5.js 每幀繪圖迴圈函式
 function draw() {
-  // 每影格填繪柔和微米白的背景色，清除前一影格畫面
-  background(248, 249, 250);
+  // 清空畫布背景，填入柔和的深灰藍底色（凸顯各色氣球與星星）
+  background(26, 32, 44);
 
-  // 遍歷所有氣球實例，依序執行狀態更新與繪製
-  for (let i = 0; i < balloons.length; i++) {
-    // 更新第 i 個氣球的座標位置與透明度狀態
-    balloons[i].update();
-    // 繪製第 i 個氣球到畫布上
-    balloons[i].display();
+  // 逐一更新並渲染陣列中的每一顆氣球
+  for (let b of balloons) {
+    // 更新氣球的物理位移、擺動與透明度數值
+    b.update();
+    // 繪製氣球、繩線與連動星星
+    b.display();
   }
 }
 
-// 監聽瀏覽器視窗大小變更事件，確保畫布始終全螢幕自適應
+// 當瀏覽器視窗大小改變時自動觸發的處理函式
 function windowResized() {
-  // 將畫布大小動態調整為目前新的視窗寬高
+  // 重新調整畫布尺寸以符合新的視窗大小
   resizeCanvas(windowWidth, windowHeight);
-  // 遍歷所有氣球以重新計算其相對於畫布短邊的實際像素大小
-  for (let i = 0; i < balloons.length; i++) {
-    // 呼叫單一氣球的尺寸更新方法
-    balloons[i].resize();
+  // 遍歷所有氣球，根據新解析度重算氣球大小
+  for (let b of balloons) {
+    // 依最新畫布尺寸更新半徑與繩長
+    b.recalculateSize();
   }
 }
