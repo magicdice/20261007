@@ -1,8 +1,12 @@
 html, body {
   margin: 0;
   padding: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden; /* 防止動態元素引發滾動條 */
+  background-color: #f8961e08;
 }
 
 canvas {
-  display: block;
+  display: block; /* 移除 canvas 預設行內元素底部的微小間隙 */
 }
