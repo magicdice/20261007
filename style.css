@@ -1,12 +1,18 @@
+/* 清除所有預設內外邊距，鎖定全螢幕 */
 html, body {
   margin: 0;
   padding: 0;
+  overflow: hidden;
   width: 100vw;
   height: 100vh;
-  overflow: hidden; /* 防止動態元素引發滾動條 */
-  background-color: #f8961e08;
+  background-color: #141826; /* 與畫布背景底色保持一致，防止載入時閃爍白邊 */
 }
 
+/* 確保 p5.js 自動產生的 canvas 元素為區塊元素且固定於底層 */
 canvas {
-  display: block; /* 移除 canvas 預設行內元素底部的微小間隙 */
+  display: block;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
 }
